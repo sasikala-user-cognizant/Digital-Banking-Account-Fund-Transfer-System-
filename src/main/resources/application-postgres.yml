@@ -1,0 +1,13 @@
+# Activate with: --spring.profiles.active=postgres
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bankdb
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USER:bank}
+    password: ${DB_PASSWORD:bank}
+  h2:
+    console:
+      enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: update
