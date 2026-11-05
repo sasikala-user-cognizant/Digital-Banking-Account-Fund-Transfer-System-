@@ -56,8 +56,10 @@ class TransactionServiceTest {
     @BeforeEach
     void setUp() {
         Clock fixed = Clock.fixed(Instant.parse("2026-10-27T10:00:00Z"), ZoneOffset.UTC);
+        BankingProperties props = new BankingProperties();
         service = new TransactionService(accountRepository, transactionRepository, new TransactionMapper(),
-                numberGenerator, new BankingProperties(), fixed);
+                numberGenerator, new AmountValidator(props),
+                new DailyLimitPolicy(transactionRepository, props, fixed));
     }
 
     private Account account(String balance, AccountStatus status) {

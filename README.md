@@ -13,12 +13,13 @@ with business validations, standardised error responses and Swagger/OpenAPI docu
 | 1 | Project setup, entities, repositories, exception-handling skeleton | Done |
 | 2 | Customer and account services, controllers, DTOs, tests | Done |
 | 3 | Deposit, withdrawal, ledger entries, idempotency, synthetic data seeder | Done |
-| 4 | Fund transfer (atomic, deadlock-safe) | Next |
-| 5-9 | Transaction history, Swagger examples, concurrency tests, coverage, demo | Planned |
+| 4 | Fund transfer (atomic, deadlock-safe, idempotent) | Done |
+| 5 | Transaction history (paging, filters) and lookup by reference | Next |
+| 6-9 | Swagger examples, concurrency tests, coverage report, demo and presentation | Planned |
 
 Endpoints appear in Swagger UI as each step is delivered.
 
-### Endpoints available now (Steps 2 and 3)
+### Endpoints available now (Steps 2 to 4)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -34,6 +35,7 @@ Endpoints appear in Swagger UI as each step is delivered.
 | PATCH | `/api/v1/accounts/{accountNumber}/status` | ACTIVE / INACTIVE / FROZEN / CLOSED |
 | POST | `/api/v1/accounts/{accountNumber}/deposit` | Deposit (optional `Idempotency-Key` header) |
 | POST | `/api/v1/accounts/{accountNumber}/withdraw` | Withdraw (optional `Idempotency-Key` header) |
+| POST | `/api/v1/transfers` | Fund transfer between two accounts (optional `Idempotency-Key` header) |
 
 Quick try (PowerShell, app running on 8080):
 ```powershell
@@ -60,6 +62,34 @@ POST /api/v1/accounts/{accountNumber}/deposit
 { "transactionRef": "b7c1f6e2-...", "accountNumber": "...", "type": "DEPOSIT", "amount": 5000.00,
   "balanceAfter": 30000.00, "status": "SUCCESS", "description": "Salary credit", "createdAt": "..." }
 ```
+
+### Fund transfer
+
+```json
+POST /api/v1/transfers
+Idempotency-Key: rent-oct-2026        (optional)
+{ "fromAccount": "100000000001", "toAccount": "100000000002", "amount": 2500.00, "description": "Rent" }
+```
+```json
+201 Created
+{ "transferRef": "5d0a9a53-...", "fromAccount": "100000000001", "toAccount": "100000000002",
+  "amount": 2500.00, "status": "SUCCESS", "fromBalanceAfter": 22500.00, "description": "Rent", "createdAt": "..." }
+```
+Failure example (insufficient balance):
+```json
+422 Unprocessable Entity
+{ "timestamp": "...", "status": 422, "error": "INSUFFICIENT_BALANCE",
+  "message": "Available balance 1000.00 in account 100000000001 is less than requested amount 2500.00",
+  "path": "/api/v1/transfers" }
+```
+
+How it stays consistent: the whole transfer runs in ONE database transaction. Both account rows are locked
+(`SELECT ... FOR UPDATE`) in ascending account-number order, so A->B and B->A at the same time cannot deadlock.
+The debit, the credit and both ledger rows (sharing one `transferRef`) are committed together or rolled back together.
+Only the sender's balance is returned in the response.
+
+Transfer rules: both accounts must exist and be ACTIVE; they must differ; currencies must match; the sender needs
+enough balance and must stay within the daily debit limit; the amount rules below apply.
 
 ### Money rules enforced
 
